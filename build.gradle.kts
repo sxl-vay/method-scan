@@ -17,11 +17,14 @@ intellij {
     version.set("2023.2.6")
     type.set("IC") // Target IDE Platform
 
-    plugins.set(listOf("java"))
+    plugins.set(listOf("java","Git4Idea"))
 }
 
 dependencies {
-    implementation("org.apache.poi:poi-ooxml:5.2.3")
+    implementation("com.alibaba:easyexcel:4.0.3")
+    compileOnly("org.projectlombok:lombok:1.18.36")
+    annotationProcessor("org.projectlombok:lombok:1.18.36")
+
 }
 
 tasks {

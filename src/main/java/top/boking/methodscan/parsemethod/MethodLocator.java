@@ -7,6 +7,15 @@ import com.intellij.psi.search.GlobalSearchScope;
 
 public class MethodLocator {
 
+
+    public static String getClassNameByMethodReference(String reference) {
+        // 拆分字符串：类名和方法+参数部分
+        int hashIndex = reference.indexOf('#');
+        return reference.substring(0, hashIndex);
+    }
+
+
+
     /**
      * 根据 IDEA Copy Reference 字符串定位唯一方法
      *

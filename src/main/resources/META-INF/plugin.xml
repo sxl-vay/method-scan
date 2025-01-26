@@ -42,4 +42,5 @@
     </application-components>-->
     <depends>com.intellij.modules.all</depends>
     <depends>com.intellij.modules.java</depends>
+    <depends>com.intellij.modules.vcs</depends>
 </idea-plugin>
