@@ -15,6 +15,11 @@ public class ExcelModel {
     @ColumnWidth(100)
     private String reference;
 
+    @ExcelProperty("行号")
+    @ColumnWidth(10)
+    private Integer codeLineNumber;
+
+
     @ExcelProperty("作者")
     @ColumnWidth(20)
     private String author;

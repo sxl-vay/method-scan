@@ -86,7 +86,8 @@ public class ExportMethodReferencesAction{
                     throw new RuntimeException(e);
                 }
                 // 写入 Excel
-                String referenceStr = qualifiedName + "." + refMethodName + ":" + location;
+                String referenceStr = qualifiedName + "." + refMethodName;
+                excelModel.setCodeLineNumber(location);
                 excelModel.setReference(referenceStr);
                 excelModel.setAuthor(commitAuthor);
                 String codeSnippet = element.getText();
