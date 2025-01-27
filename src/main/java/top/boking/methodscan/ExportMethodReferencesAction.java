@@ -30,35 +30,9 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
-public class ExportMethodReferencesAction extends AnAction {
+public class ExportMethodReferencesAction{
 
-    @Override
-    public void actionPerformed(AnActionEvent e) {
-        Project project = e.getProject();
-        if (DumbService.isDumb(project)) {
-            Messages.showErrorDialog("工程索引尚未就绪请等待！", "错误");
-            return;
-        }
-        // 显示选择框，提供两种直观的选项
-        String[] options = {"手动输入方法名称", "上传文件"};
-        int choice = Messages.showDialog(
-                project,
-                "请选择一种方式：\n1. 手动输入方法名称\n2. 上传文件解析方法名",
-                "选择方法来源",
-                options,
-                0, // 默认选中第一个选项
-                Messages.getQuestionIcon()
-        );
-        List<String> methodList = getMethodList(choice, project);
-        if (methodList == null) return;
-        if (methodList.isEmpty()) {
-            Messages.showErrorDialog("没有找到要搜索的方法！", "错误");
-            return;
-        }
-        searchMethodAndWrite(methodList, project);
-    }
-
-    private void searchMethodAndWrite(List<String> methodList, Project project) {
+    public static void searchMethodAndWrite(List<String> methodList, Project project) {
         Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
         ApplicationManager.getApplication().runReadAction(() -> dataMap.putAll(processDataMap(methodList, project)));
         File file = ExcelFileCreator.createExcelFileInSelectedDirectory(project);
@@ -68,7 +42,7 @@ public class ExportMethodReferencesAction extends AnAction {
         });
     }
 
-    private Map<String, List<ExcelModel>> processDataMap(List<String> methodList, Project project) {
+    private static Map<String, List<ExcelModel>> processDataMap(List<String> methodList, Project project) {
         Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
         for (String methodInfo : methodList) {
             List<ExcelModel> datas = new ArrayList<>();
@@ -145,47 +119,29 @@ public class ExportMethodReferencesAction extends AnAction {
         return datas.values().stream().flatMap(Collection::stream).collect(Collectors.toList());
     }
 
-    private static @Nullable List<String> getMethodList(int choice, Project project) {
+
+    public static @Nullable List<String> getMethodListFromFile(Project project) {
+        FileChooserDescriptor fileChooserDescriptor = new FileChooserDescriptor(
+                true, // 仅支持选择文件
+                false, // 不允许选择文件夹
+                false, false, false, false
+        );
+        fileChooserDescriptor.setTitle("选择包含方法名的文件");
+        fileChooserDescriptor.setDescription("文件格式为：类全限定名 方法名，每行一个");
+        VirtualFile file = FileChooser.chooseFile(fileChooserDescriptor, project, null);
+        if (file == null) {
+            Messages.showErrorDialog("未选择文件！", "错误");
+            return null;
+        }
+
         List<String> methodList = new ArrayList<>();
-        if (choice == 0) {
-            // 手动输入类名和方法名
-            String qualifiedClassNames = Messages.showInputDialog(
-                    project,
-                    "请输入方法签名的全限定名（例如：com.example.MyClass）：",
-                    "输入方法签名",
-                    Messages.getQuestionIcon()
-            );
-            if (qualifiedClassNames == null || qualifiedClassNames.trim().isEmpty()) {
-                Messages.showErrorDialog("类名不能为空！", "错误");
-                return null;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                methodList.add(line);
             }
-            methodList.addAll(Arrays.stream(qualifiedClassNames.split(";")).toList());
-        } else if (choice == 1) {
-            // 使用 IDEA 的 FileChooser 显示文件选择器
-            FileChooserDescriptor fileChooserDescriptor = new FileChooserDescriptor(
-                    true, // 仅支持选择文件
-                    false, // 不允许选择文件夹
-                    false, false, false, false
-            );
-            fileChooserDescriptor.setTitle("选择包含方法名的文件");
-            fileChooserDescriptor.setDescription("文件格式为：类全限定名 方法名，每行一个");
-            VirtualFile file = FileChooser.chooseFile(fileChooserDescriptor, project, null);
-            if (file == null) {
-                Messages.showErrorDialog("未选择文件！", "错误");
-                return null;
-            }
-            // 解析文件内容
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream()))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    methodList.add(line);
-                }
-            } catch (IOException ex) {
-                Messages.showErrorDialog("文件解析失败：" + ex.getMessage(), "错误");
-                return null;
-            }
-        } else {
-            Messages.showInfoMessage("操作已取消。", "取消");
+        } catch (IOException ex) {
+            Messages.showErrorDialog("文件解析失败：" + ex.getMessage(), "错误");
             return null;
         }
         return methodList;

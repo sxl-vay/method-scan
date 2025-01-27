@@ -26,20 +26,27 @@
     </extensions>
 
     <actions>
-        <action id="ScanMethodReferences"
-                class="top.boking.methodscan.ExportMethodReferencesAction"
-                text="Scan Method References"
-                description="Scan method references in the project and export to Excel">
+        <!-- Main Action in Tools Menu -->
+        <group id="ScanMethodReferences" text="Scan Method References" popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
-        </action>
+            <action id="ManualInputMethodReference"
+                    class="top.boking.methodscan.action.ManualInputAction"
+                    text="手动输入"
+                    description="Manually input method reference"/>
+            <action id="UploadFileMethodReference"
+                    class="top.boking.methodscan.action.UploadFileAction"
+                    text="上传文件"
+                    description="Upload file to parse method references"/>
+        </group>
     </actions>
 
 
-  <!--  <application-components>
-        <component>
-            <implementation-class>top.boking.methodscan.Test</implementation-class>
-        </component>
-    </application-components>-->
+
+    <!--  <application-components>
+          <component>
+              <implementation-class>top.boking.methodscan.Test</implementation-class>
+          </component>
+      </application-components>-->
     <depends>com.intellij.modules.all</depends>
     <depends>com.intellij.modules.java</depends>
     <depends>com.intellij.modules.vcs</depends>
