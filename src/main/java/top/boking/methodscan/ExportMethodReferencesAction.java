@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -32,6 +33,10 @@ public class ExportMethodReferencesAction extends AnAction {
     @Override
     public void actionPerformed(AnActionEvent e) {
         Project project = e.getProject();
+        /*if (!DumbService.isDumb(project)) {
+            Messages.showErrorDialog("工程索引尚未就绪请等待！", "错误");
+            return;
+        }*/
         if (project == null) return;
         // 显示选择框，提供两种直观的选项
         String[] options = {"手动输入方法名称", "上传文件"};
@@ -52,55 +57,12 @@ public class ExportMethodReferencesAction extends AnAction {
         searchMethodAndWrite(methodList, project);
     }
 
-    private static void searchMethodAndWrite(List<String> methodList, Project project) {
-        // 创建 Excel 工作簿
-        Map<String,List<ExcelModel>> dataMap = new LinkedHashMap<>();
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            for (String methodInfo : methodList) {
-                List<ExcelModel> datas = new ArrayList<>();
-                MethodReference methodReference = new MethodReference(methodInfo);
-                String methodName = methodReference.getMethodName();
-                String className = methodReference.getClassName();
-                // 查找类
-                PsiClass psiClass = JavaPsiFacade.getInstance(project)
-                        .findClass(className, GlobalSearchScope.allScope(project));
-                if (psiClass == null) {
-                    ExcelModel excelModel = new ExcelModel();
-                    excelModel.setSignature(methodInfo);
-                    excelModel.setReference("找不到类：");
-                    datas.add(excelModel);
-                    dataMap.put(methodInfo, datas);
-                    continue;
-                }
-                // 查找方法
-                PsiMethod targetMethod = methodReference.findSpecificMethod(project);
-                if (targetMethod == null) {
-                    ExcelModel excelModel = new ExcelModel();
-                    excelModel.setReference("找不到方法!!");
-                    datas.add(excelModel);
-                    dataMap.put(methodInfo, datas);
-                    continue;
-                }
-                // 查找引用
-                for (PsiReference reference : ReferencesSearch.search(targetMethod).findAll()) {
-                    ExcelModel excelModel = new ExcelModel();
-                    PsiElement element = reference.getElement();
-                    // 获取引用所在的文件
-                    PsiFile psiFile = element.getContainingFile();
-                    // 获取 VirtualFile 和 Document
-                    VirtualFile virtualFile = psiFile.getVirtualFile();
-                    int location = ReferenceLineInfo.getLineNumber(element);
-                    String commitAuthor = GitCommitInfo.getCommitAuthor(project, virtualFile, location);
-                    // 写入 Excel
-                    String referenceStr = className + "." + methodName + ":" + location;
-                    excelModel.setReference(referenceStr);
-                    excelModel.setAuthor(commitAuthor);
-                    String codeSnippet = element.getText();
-                    excelModel.setCodeSnippet(codeSnippet);
-                    datas.add(excelModel);
-                }
-                dataMap.put(methodInfo, datas);
-            }
+    private void searchMethodAndWrite(List<String> methodList, Project project) {
+        Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
+        DumbService.getInstance(project).runWhenSmart(() -> {
+            ApplicationManager.getApplication().runReadAction(() -> {
+                dataMap.putAll(processDataMap(methodList, project));
+            });
         });
         // 后台任务完成后，回到 EDT 执行保存操作
         ApplicationManager.getApplication().invokeLater(() -> {
@@ -108,14 +70,64 @@ public class ExportMethodReferencesAction extends AnAction {
         });
     }
 
-    private static void saveFile(Project project, Map<String,List<ExcelModel>> datas) {
+    private Map<String, List<ExcelModel>> processDataMap(List<String> methodList, Project project) {
+        Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
+        for (String methodInfo : methodList) {
+            List<ExcelModel> datas = new ArrayList<>();
+            MethodReference methodReference = new MethodReference(methodInfo);
+            String methodName = methodReference.getMethodName();
+            String className = methodReference.getClassName();
+            // 查找类
+            PsiClass psiClass = JavaPsiFacade.getInstance(project)
+                    .findClass(className, GlobalSearchScope.allScope(project));
+            ExcelModel excelModel = new ExcelModel();
+            excelModel.setReference(methodInfo);
+            if (psiClass == null) {
+                excelModel.setSignature(methodInfo);
+                excelModel.setReference("找不到类：");
+                datas.add(excelModel);
+                dataMap.put(methodInfo, datas);
+                continue;
+            }
+            // 查找方法
+            PsiMethod targetMethod = methodReference.findSpecificMethod(project);
+            if (targetMethod == null) {
+                excelModel.setReference("找不到方法!!");
+                datas.add(excelModel);
+                dataMap.put(methodInfo, datas);
+                continue;
+            }
+            // 查找引用
+            for (PsiReference reference : ReferencesSearch.search(targetMethod).findAll()) {
+                PsiElement element = reference.getElement();
+                // 获取引用所在的文件
+                PsiFile psiFile = element.getContainingFile();
+                // 获取 VirtualFile 和 Document
+                VirtualFile virtualFile = psiFile.getVirtualFile();
+                int location = ReferenceLineInfo.getLineNumber(element);
+                String commitAuthor = GitCommitInfo.getCommitAuthor(project, virtualFile, location);
+                // 写入 Excel
+                String referenceStr = className + "." + methodName + ":" + location;
+                excelModel.setReference(referenceStr);
+                excelModel.setAuthor(commitAuthor);
+                String codeSnippet = element.getText();
+                excelModel.setCodeSnippet(codeSnippet);
+                datas.add(excelModel);
+            }
+            dataMap.put(methodInfo, datas);
+        }
+        return dataMap;
+    }
+
+    private static void saveFile(Project project, Map<String, List<ExcelModel>> datas) {
         // 保存 Excel 文件
-        try  {
+        try {
+            Collection<?> dataList = parseData(datas);
             File file = ExcelFileCreator.createExcelFileInSelectedDirectory(project);
             EasyExcel.write(file, ExcelModel.class)
                     .sheet("模板")
-                    .registerWriteHandler(new CustomLoopMergeStrategy())
-                    .doWrite(parseData(datas));
+                    .registerWriteHandler(new CustomLoopMergeStrategy(dataList.size()))
+                    .doWrite(dataList);
             Messages.showInfoMessage("方法引用导出成功！文件已保存为：methodReferences.xlsx", "成功");
         } catch (Exception ex) {
             Messages.showErrorDialog("导出 Excel 文件失败：" + ex.getMessage(), "错误");
