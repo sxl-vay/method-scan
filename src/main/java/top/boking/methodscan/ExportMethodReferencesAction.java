@@ -6,9 +6,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
-import com.intellij.openapi.progress.ProgressIndicator;
-import com.intellij.openapi.progress.ProgressManager;
-import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
@@ -65,6 +62,7 @@ public class ExportMethodReferencesAction extends AnAction {
         Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
         ApplicationManager.getApplication().runReadAction(() -> dataMap.putAll(processDataMap(methodList, project)));
         File file = ExcelFileCreator.createExcelFileInSelectedDirectory(project);
+        if (file == null) return;
         ApplicationManager.getApplication().runWriteAction(() -> {
             saveFile(dataMap, file);
         });
