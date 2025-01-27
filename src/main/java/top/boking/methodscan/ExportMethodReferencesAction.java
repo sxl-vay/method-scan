@@ -142,17 +142,17 @@ public class ExportMethodReferencesAction extends AnAction {
         List<String> methodList = new ArrayList<>();
         if (choice == 0) {
             // 手动输入类名和方法名
-            String qualifiedClassName = Messages.showInputDialog(
+            String qualifiedClassNames = Messages.showInputDialog(
                     project,
                     "请输入方法签名的全限定名（例如：com.example.MyClass）：",
                     "输入方法签名",
                     Messages.getQuestionIcon()
             );
-            if (qualifiedClassName == null || qualifiedClassName.trim().isEmpty()) {
+            if (qualifiedClassNames == null || qualifiedClassNames.trim().isEmpty()) {
                 Messages.showErrorDialog("类名不能为空！", "错误");
                 return null;
             }
-            methodList.add(qualifiedClassName);
+            methodList.addAll(Arrays.stream(qualifiedClassNames.split(";")).toList());
         } else if (choice == 1) {
             // 使用 IDEA 的 FileChooser 显示文件选择器
             FileChooserDescriptor fileChooserDescriptor = new FileChooserDescriptor(
