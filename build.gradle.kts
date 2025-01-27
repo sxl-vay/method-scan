@@ -21,7 +21,10 @@ intellij {
 }
 
 dependencies {
-    implementation("com.alibaba:easyexcel:4.0.3")
+    implementation("com.alibaba:easyexcel:4.0.3"){
+        exclude(group = "org.apache.logging.log4j", module = "log4j-api")
+        exclude(group = "org.slf4j", module = "slf4j-api")
+    }
     compileOnly("org.projectlombok:lombok:1.18.36")
     annotationProcessor("org.projectlombok:lombok:1.18.36")
 
