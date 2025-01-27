@@ -6,6 +6,9 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
@@ -27,6 +30,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 public class ExportMethodReferencesAction extends AnAction {
@@ -34,11 +38,10 @@ public class ExportMethodReferencesAction extends AnAction {
     @Override
     public void actionPerformed(AnActionEvent e) {
         Project project = e.getProject();
-        /*if (!DumbService.isDumb(project)) {
+        if (DumbService.isDumb(project)) {
             Messages.showErrorDialog("工程索引尚未就绪请等待！", "错误");
             return;
-        }*/
-        if (project == null) return;
+        }
         // 显示选择框，提供两种直观的选项
         String[] options = {"手动输入方法名称", "上传文件"};
         int choice = Messages.showDialog(
@@ -60,13 +63,10 @@ public class ExportMethodReferencesAction extends AnAction {
 
     private void searchMethodAndWrite(List<String> methodList, Project project) {
         Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
-        DumbService.getInstance(project).runWhenSmart(() -> {
-            ApplicationManager.getApplication().runReadAction(() -> {
-                dataMap.putAll(processDataMap(methodList, project));
-            });
-        });
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            saveFile(project, dataMap);
+        ApplicationManager.getApplication().runReadAction(() -> dataMap.putAll(processDataMap(methodList, project)));
+        File file = ExcelFileCreator.createExcelFileInSelectedDirectory(project);
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            saveFile(dataMap, file);
         });
     }
 
@@ -75,7 +75,6 @@ public class ExportMethodReferencesAction extends AnAction {
         for (String methodInfo : methodList) {
             List<ExcelModel> datas = new ArrayList<>();
             MethodReference methodReference = new MethodReference(methodInfo);
-            String methodName = methodReference.getMethodName();
             String className = methodReference.getClassName();
             // 查找类
             PsiClass psiClass = JavaPsiFacade.getInstance(project)
@@ -86,7 +85,7 @@ public class ExportMethodReferencesAction extends AnAction {
                 ExcelModel excelModel = new ExcelModel();
                 excelModel.setSignature(methodInfo);
                 excelModel.setSignature(methodInfo);
-                excelModel.setReference(psiClass == null?"找不到类":"找不到方法");
+                excelModel.setReference(psiClass == null ? "找不到类" : "找不到方法");
                 datas.add(excelModel);
                 dataMap.put(methodInfo, datas);
                 continue;
@@ -105,7 +104,15 @@ public class ExportMethodReferencesAction extends AnAction {
                 // 获取 VirtualFile 和 Document
                 VirtualFile virtualFile = psiFile.getVirtualFile();
                 int location = ReferenceLineInfo.getLineNumber(element);
-                String commitAuthor = GitCommitInfo.getCommitAuthor(project, virtualFile, location);
+                String commitAuthor = null;
+                try {
+                    //这里可能会阻塞EDT
+                    commitAuthor = GitCommitInfo.getCommitAuthor(project, virtualFile, location);
+                } catch (ExecutionException e) {
+                    throw new RuntimeException(e);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
                 // 写入 Excel
                 String referenceStr = qualifiedName + "." + refMethodName + ":" + location;
                 excelModel.setReference(referenceStr);
@@ -119,16 +126,17 @@ public class ExportMethodReferencesAction extends AnAction {
         return dataMap;
     }
 
-    private static void saveFile(Project project, Map<String, List<ExcelModel>> datas) {
+    private static void saveFile(Map<String, List<ExcelModel>> datas, File file) {
         // 保存 Excel 文件
         try {
             Collection<?> dataList = parseData(datas);
-            File file = ExcelFileCreator.createExcelFileInSelectedDirectory(project);
             EasyExcel.write(file, ExcelModel.class)
                     .sheet("模板")
                     .registerWriteHandler(new CustomLoopMergeStrategy(dataList.size()))
                     .doWrite(dataList);
-            Messages.showInfoMessage("方法引用导出成功！文件已保存为：methodReferences.xlsx", "成功");
+            ApplicationManager.getApplication().invokeLater(()->{
+                Messages.showInfoMessage("方法引用导出成功！文件已保存为："+file.getName(), "成功");
+            });
         } catch (Exception ex) {
             ex.printStackTrace();
 //            Messages.showErrorDialog("导出 Excel 文件失败：" + ex.getMessage(), "错误");

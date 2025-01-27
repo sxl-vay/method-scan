@@ -109,6 +109,9 @@ public class MethodReference {
         if (paramTypes == null && parameters.length == 0) {
             return true;
         }
+        if (paramTypes == null && !hasOverloaded) {
+            return true;
+        }
         if (parameters.length != paramTypes.length) {
             return false; // 参数数量不同
         }
