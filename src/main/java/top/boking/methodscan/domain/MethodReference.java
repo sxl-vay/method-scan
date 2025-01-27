@@ -51,6 +51,7 @@ public class MethodReference {
 
     /**
      * 查找类中的指定方法，并根据用户选择过滤重载方法。
+     * 如果有重载方法必须指定参数
      *
      * @param project 当前项目
      * @return 用户选择的 PsiMethod（如果有）
@@ -60,19 +61,11 @@ public class MethodReference {
         PsiClass psiClass = JavaPsiFacade.getInstance(project)
                 .findClass(className, GlobalSearchScope.allScope(project));
         if (psiClass == null) {
-            Messages.showErrorDialog("找不到类：" + className, "错误");
+//            Messages.showErrorDialog("找不到类：" + className, "错误");
             return null;
         }
         // 获取所有同名方法（包括重载）
         PsiMethod[] methods = psiClass.findMethodsByName(methodName, false);
-        if (methods.length == 0) {
-            Messages.showErrorDialog("找不到方法：" + methodName, "错误");
-            return null;
-        }
-        // 如果只有一个方法，直接返回
-        if (methods.length == 1) {
-            return methods[0];
-        }
         // 根据选择找到对应的 PsiMethod
         for (PsiMethod method : methods) {
             if (isMethodMatch(method)) {

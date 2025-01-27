@@ -1,15 +1,11 @@
 package top.boking.methodscan.parsemethod;
 
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vcs.VcsException;
 import com.intellij.openapi.vcs.annotate.FileAnnotation;
 import com.intellij.openapi.vcs.history.VcsRevisionNumber;
 import com.intellij.openapi.vfs.VirtualFile;
-import git4idea.GitUtil;
 import git4idea.annotate.GitAnnotationProvider;
-import git4idea.repo.GitRepository;
 
 
 public class GitCommitInfo {

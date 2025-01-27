@@ -11,7 +11,6 @@ import org.apache.poi.ss.util.CellRangeAddress;
 
 public class CustomLoopMergeStrategy implements RowWriteHandler {
 
-    private String lastHolder;
     private Integer lastIndex = 1;
     private final Integer count;
 
@@ -48,20 +47,16 @@ public class CustomLoopMergeStrategy implements RowWriteHandler {
         Sheet sheet = context.getWriteSheetHolder().getSheet();
         Cell currentCell = sheet.getRow(rowIndex).getCell(0); // 当前行第一列
         String currentValue = currentCell.getStringCellValue();
-        if (rowIndex == 1) {
-            lastHolder = currentValue;
-            return; // 第一数据行不合并
-        }
         Cell previousCell = sheet.getRow(rowIndex - 1).getCell(0); // 上一行第一列
         String previousValue = previousCell.getStringCellValue();
-        if (!currentValue.equals(previousValue)) {
+        if (!currentValue.equals(previousValue) && lastIndex<rowIndex-1) {
             // 合并单元格
             sheet.addMergedRegion(new CellRangeAddress(lastIndex, rowIndex-1, 0, 0));
             lastIndex = rowIndex;
-            lastHolder = currentValue;
         }
-        if (rowIndex == count ) {
-            sheet.addMergedRegion(new CellRangeAddress(lastIndex, rowIndex, 0, 0));
+        if (rowIndex.equals(count) && lastIndex<rowIndex) {//最后一行时合并上一个方法
+            CellRangeAddress cellAddresses = new CellRangeAddress(lastIndex, rowIndex, 0, 0);
+            sheet.addMergedRegion(cellAddresses);
         }
     }
 
