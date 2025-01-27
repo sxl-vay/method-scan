@@ -1,12 +1,11 @@
 package top.boking.methodscan;
 
 import com.alibaba.excel.EasyExcel;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptor;
-import com.intellij.openapi.project.DumbService;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -30,73 +29,95 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
-public class ExportMethodReferencesAction{
+public class ExportMethodReferencesAction {
 
     public static void searchMethodAndWrite(List<String> methodList, Project project) {
-        Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
-        ApplicationManager.getApplication().runReadAction(() -> dataMap.putAll(processDataMap(methodList, project)));
         File file = ExcelFileCreator.createExcelFileInSelectedDirectory(project);
         if (file == null) return;
-        ApplicationManager.getApplication().runWriteAction(() -> {
-            saveFile(dataMap, file);
-        });
-    }
+        
+        ProgressManager.getInstance().run(new com.intellij.openapi.progress.Task.Backgroundable(project, "扫描方法引用", true) {
+            @Override
+            public void run(ProgressIndicator indicator) {
+                indicator.setIndeterminate(false);
+                indicator.setText("正在扫描方法引用...");
+                Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
+                int total = methodList.size();
+                int currentOut = 0;
+                for (String methodInfo : methodList) {
+                    List<ExcelModel> datas = new ArrayList<>();
+                    MethodReference methodReference = new MethodReference(methodInfo);
+                    String className = methodReference.getClassName();
+                    // 查找类
+                    PsiClass psiClass = JavaPsiFacade.getInstance(project)
+                            .findClass(className, GlobalSearchScope.allScope(project));
+                    PsiMethod targetMethod = methodReference.findSpecificMethod(project);
+                    if (psiClass == null || targetMethod == null) {
+                        ExcelModel excelModel = new ExcelModel();
+                        excelModel.setSignature(methodInfo);
+                        excelModel.setSignature(methodInfo);
+                        excelModel.setReference(psiClass == null ? "找不到类" : "找不到方法");
+                        datas.add(excelModel);
+                        dataMap.put(methodInfo, datas);
+                        continue;
+                    }
+                    // 查找引用
+                    Collection<PsiReference> refs = ReferencesSearch.search(targetMethod).findAll();
+                    int currentInner = 0;
 
-    private static Map<String, List<ExcelModel>> processDataMap(List<String> methodList, Project project) {
-        Map<String, List<ExcelModel>> dataMap = new LinkedHashMap<>();
-        for (String methodInfo : methodList) {
-            List<ExcelModel> datas = new ArrayList<>();
-            MethodReference methodReference = new MethodReference(methodInfo);
-            String className = methodReference.getClassName();
-            // 查找类
-            PsiClass psiClass = JavaPsiFacade.getInstance(project)
-                    .findClass(className, GlobalSearchScope.allScope(project));
-
-            PsiMethod targetMethod = methodReference.findSpecificMethod(project);
-            if (psiClass == null || targetMethod == null) {
-                ExcelModel excelModel = new ExcelModel();
-                excelModel.setSignature(methodInfo);
-                excelModel.setSignature(methodInfo);
-                excelModel.setReference(psiClass == null ? "找不到类" : "找不到方法");
-                datas.add(excelModel);
-                dataMap.put(methodInfo, datas);
-                continue;
-            }
-            // 查找引用
-            for (PsiReference reference : ReferencesSearch.search(targetMethod).findAll()) {
-                ExcelModel excelModel = new ExcelModel();
-                excelModel.setSignature(methodInfo);
-                PsiElement element = reference.getElement();
-                PsiMethod referencingMethod = PsiTreeUtil.getParentOfType(element, PsiMethod.class);
-                String refMethodName = referencingMethod.getName();
-                PsiClass referenceClass = PsiTreeUtil.getParentOfType(element, PsiClass.class);
-                String qualifiedName = referenceClass.getQualifiedName();
-                // 获取引用所在的文件
-                PsiFile psiFile = element.getContainingFile();
-                // 获取 VirtualFile 和 Document
-                VirtualFile virtualFile = psiFile.getVirtualFile();
-                int location = ReferenceLineInfo.getLineNumber(element);
-                String commitAuthor = null;
-                try {
-                    //这里可能会阻塞EDT
-                    commitAuthor = GitCommitInfo.getCommitAuthor(project, virtualFile, location);
-                } catch (ExecutionException e) {
-                    throw new RuntimeException(e);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
+                    for (PsiReference reference : refs) {
+                        double littleProcess = ++currentInner * ((double) 1 / (refs.size()*methodList.size()));
+                        double out = ((double) currentOut / total);
+                        double all = out + littleProcess;
+                        updateProcess(indicator, methodInfo, all, currentOut, total);
+                        ExcelModel excelModel = new ExcelModel();
+                        excelModel.setSignature(methodInfo);
+                        PsiElement element = reference.getElement();
+                        PsiMethod referencingMethod = PsiTreeUtil.getParentOfType(element, PsiMethod.class);
+                        String refMethodName = referencingMethod.getName();
+                        PsiClass referenceClass = PsiTreeUtil.getParentOfType(element, PsiClass.class);
+                        String qualifiedName = referenceClass.getQualifiedName();
+                        // 获取引用所在的文件
+                        PsiFile psiFile = element.getContainingFile();
+                        // 获取 VirtualFile 和 Document
+                        VirtualFile virtualFile = psiFile.getVirtualFile();
+                        int location = ReferenceLineInfo.getLineNumber(element);
+                        String commitAuthor = null;
+                        try {
+                            //这里可能会阻塞EDT
+                            commitAuthor = GitCommitInfo.getCommitAuthor(project, virtualFile, location);
+                        } catch (ExecutionException e) {
+                            throw new RuntimeException(e);
+                        } catch (InterruptedException e) {
+                            throw new RuntimeException(e);
+                        }
+                        // 写入 Excel
+                        String referenceStr = qualifiedName + "." + refMethodName;
+                        excelModel.setCodeLineNumber(location);
+                        excelModel.setReference(referenceStr);
+                        excelModel.setAuthor(commitAuthor);
+                        String codeSnippet = element.getText();
+                        excelModel.setCodeSnippet(codeSnippet);
+                        datas.add(excelModel);
+                    }
+                    dataMap.put(methodInfo, datas);
+                    if (refs.isEmpty()) {
+                        double all = (double) currentOut / total;
+                        updateProcess(indicator, methodInfo, all, currentOut, total);
+                    }
+                    ++currentOut;
                 }
-                // 写入 Excel
-                String referenceStr = qualifiedName + "." + refMethodName;
-                excelModel.setCodeLineNumber(location);
-                excelModel.setReference(referenceStr);
-                excelModel.setAuthor(commitAuthor);
-                String codeSnippet = element.getText();
-                excelModel.setCodeSnippet(codeSnippet);
-                datas.add(excelModel);
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    ApplicationManager.getApplication().runWriteAction(() -> {
+                        saveFile(dataMap, file);
+                    });
+                });
             }
-            dataMap.put(methodInfo, datas);
-        }
-        return dataMap;
+
+            private static void updateProcess(ProgressIndicator indicator, String methodInfo, double all, int currentOut, int total) {
+                indicator.setFraction(all);
+                indicator.setText2(String.format("处理进度: %d/%d - %s", currentOut, total, methodInfo));
+            }
+        });
     }
 
     private static void saveFile(Map<String, List<ExcelModel>> datas, File file) {
@@ -107,8 +128,8 @@ public class ExportMethodReferencesAction{
                     .sheet("模板")
                     .registerWriteHandler(new CustomLoopMergeStrategy(dataList.size()))
                     .doWrite(dataList);
-            ApplicationManager.getApplication().invokeLater(()->{
-                Messages.showInfoMessage("方法引用导出成功！文件已保存为："+file.getName(), "成功");
+            ApplicationManager.getApplication().invokeLater(() -> {
+                Messages.showInfoMessage("方法引用导出成功！文件已保存为：" + file.getName(), "成功");
             });
         } catch (Exception ex) {
             ex.printStackTrace();
